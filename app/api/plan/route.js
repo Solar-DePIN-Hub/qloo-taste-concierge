@@ -120,9 +120,11 @@ export async function POST(req) {
           const sig = driverIds.length ? driverIds : allIds;
           let tag = null, group = [];
           for (const t of tags.slice(0, 3)) {
-            group = await placeInsights({ city, entityIds: sig, tagId: t.id, take: 20 }).catch((e) => { console.error("insights", e.message); return []; });
-            group = group.filter((g) => !JUNK.test(g.name.trim()));
-            if (group.length >= 3) { tag = t; break; }
+            let g = await placeInsights({ city, entityIds: sig, tagId: t.id, take: 20 }).catch((e) => { console.error("insights", e.message); return null; });
+            if (g === null) { await new Promise((r) => setTimeout(r, 1500)); g = await placeInsights({ city, entityIds: sig, tagId: t.id, take: 20 }).catch(() => []); }
+            g = g.filter((x) => !JUNK.test(x.name.trim()));
+            if (g.length > group.length) { group = g; tag = t; }
+            if (group.length >= 3) break;
           }
           if (!tag) { stops.push({ ...s, tag: null, candidates: [] }); continue; }
           const per = await Promise.all(people.filter((p) => p.entities.length).map(async (p) => {
