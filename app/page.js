@@ -94,7 +94,7 @@ export default function Home() {
             <li className="stop" key={i}>
               <div className="rail"><div className="num">{i + 1}</div></div>
               <article className="scard">
-                <div className="label">{s.label}{s.category ? <span> · {s.category}</span> : null}</div>
+                <div className="label">{s.label}{s.category && s.category.toLowerCase() !== s.label.toLowerCase() ? <span> · {s.category}</span> : null}</div>
                 <h3>{s.venue.name}</h3>
                 {s.venue.address && <div className="addr">📍 {s.venue.address}</div>}
                 <p className="why">{s.why}</p>
