@@ -22,6 +22,10 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
 
   const [logOpen, setLogOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const planText = (r) => [`${r.title} (${r.city})`, r.summary, "", ...r.stops.map((s, i) => `${i + 1}. ${s.label}: ${s.venue.name}${s.venue.address ? ` (${s.venue.address})` : ""}\n   ${s.why}`), r.tip ? `\nTip: ${r.tip}` : "", "\nPlanned with Taste Concierge: https://qloo-taste-concierge-sigma.vercel.app"].filter((x) => x !== undefined).join("\n");
+  const copyPlan = async (r) => { try { await navigator.clipboard.writeText(planText(r)); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch {} };
+  const sharePlan = async (r) => { if (navigator.share) { try { await navigator.share({ title: r.title, text: planText(r) }); return; } catch (e) { if (e?.name === "AbortError") return; } } copyPlan(r); };
   const load = (e) => { setCity(e.city); setOccasion(""); setFriends(e.friends); setResult(null); setSteps([]); setError(""); };
   const upd = (i, k, v) => setFriends(friends.map((f, j) => (j === i ? { ...f, [k]: v } : f)));
 
@@ -76,25 +80,36 @@ export default function Home() {
 
       {result && (
         <section className="result">
-          <h2>{result.title}</h2>
-          {result.summary && <p className="summary">{result.summary}</p>}
+          <div className="rhead">
+            <div className="kicker">{result.city} · {result.stops.length} stops · for {result.friends.map((f) => f.name).join(", ")}</div>
+            <h2>{result.title}</h2>
+            {result.summary && <p className="summary">{result.summary}</p>}
+            <div className="share">
+              <button type="button" className="sbtn" onClick={() => sharePlan(result)}>{copied ? "✓ Copied" : "Share plan"}</button>
+              <button type="button" className="sbtn ghost2" onClick={() => copyPlan(result)}>Copy as text</button>
+            </div>
+          </div>
+          <ol className="timeline">
           {result.stops.map((s, i) => (
-            <article className="card stop" key={i}>
-              <div className="num">{i + 1}</div>
-              <div className="label">{s.label}{s.category ? ` · ${s.category}` : ""}</div>
-              <h3>{s.venue.name}</h3>
-              {s.venue.address && <div className="addr">{s.venue.address}</div>}
-              <p>{s.why}</p>
-              <div className="meter"><span style={{ width: `${Math.round((s.venue.affinity || 0) * 100)}%` }} /><em>Qloo group affinity {Math.round((s.venue.affinity || 0) * 100)}%</em></div>
-              <ul className="pf">{s.per_friend.map((p, j) => <li key={j}><b>{p.name}</b>{p.driver && <span className="aff for">picked for {p.name}</span>}{p.match > 0 && <span className="aff">{p.match}% taste match</span>} {p.reason}</li>)}</ul>
-              <div className="chips">{s.venue.tags.filter((t) => t && t.length > 2 && !/^place$/i.test(t)).slice(0, 6).map((t) => <span key={t}>{t}</span>)}</div>
-              <div className="links">
-                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.venue.name + " " + (s.venue.address || result.city))}`} target="_blank" rel="noreferrer">Map</a>
-                {s.venue.website && <a href={s.venue.website} target="_blank" rel="noreferrer">Website</a>}
-              </div>
-              {s.alternatives.length > 0 && <div className="alt">Also good: {s.alternatives.map((a) => a.name).join(" · ")}</div>}
-            </article>
+            <li className="stop" key={i}>
+              <div className="rail"><div className="num">{i + 1}</div></div>
+              <article className="scard">
+                <div className="label">{s.label}{s.category ? <span> · {s.category}</span> : null}</div>
+                <h3>{s.venue.name}</h3>
+                {s.venue.address && <div className="addr">📍 {s.venue.address}</div>}
+                <p className="why">{s.why}</p>
+                <div className="meter"><span style={{ width: `${Math.round((s.venue.affinity || 0) * 100)}%` }} /><em>Qloo group affinity {Math.round((s.venue.affinity || 0) * 100)}%</em></div>
+                <ul className="pf">{s.per_friend.filter((p) => p.reason || p.driver).map((p, j) => <li key={j} className={p.driver ? "drv" : ""}><div className="av">{p.name.slice(0, 1).toUpperCase()}</div><div><b>{p.name}</b>{p.driver && <span className="aff for">picked for {p.name}</span>}{p.match > 0 && <span className="aff">{p.match}% match</span>}<div className="rs">{p.reason}</div></div></li>)}</ul>
+                <div className="chips">{s.venue.tags.filter((t) => t && t.length > 2 && !/^place$/i.test(t)).slice(0, 5).map((t) => <span key={t}>{t}</span>)}</div>
+                <div className="links">
+                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.venue.name + " " + (s.venue.address || result.city))}`} target="_blank" rel="noreferrer">Open in Maps ↗</a>
+                  {s.venue.website && <a href={s.venue.website} target="_blank" rel="noreferrer">Website ↗</a>}
+                </div>
+                {s.alternatives.length > 0 && <div className="alt">Also good: {s.alternatives.map((a) => a.name).join(" · ")}</div>}
+              </article>
+            </li>
           ))}
+          </ol>
           {result.tip && <div className="card tip">💡 {result.tip}</div>}
         </section>
       )}

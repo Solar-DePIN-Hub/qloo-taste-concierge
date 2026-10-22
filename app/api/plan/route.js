@@ -9,7 +9,7 @@ const PLANNER = `You are the planning step of a group-outing agent. Given a city
 {"friends":[{"name":"...","interests":[{"query":"exact name of a SPECIFIC artist/movie/show/book/brand/game/person","type":"urn:entity:artist|urn:entity:person (directors, actors)|urn:entity:movie|urn:entity:tv_show|urn:entity:book|urn:entity:brand|urn:entity:videogame|urn:entity:podcast"}],"genres":["generic likes: jazz, museums, films, sushi, ramen, natural wine"]}],
 "stops":[{"label":"short human label e.g. Dinner","tag_query":"one or two words for a venue type, e.g. ramen, sushi, wine bar, coffee, museum, jazz club, cinema","for":["names of friends whose tastes drive this stop"]}],
 "reasoning":"one sentence on why these stops"}
-Rules: 2-3 stops, each ONE venue type (never combine two types in one stop). EVERY friend must appear in the "for" list of at least one stop, driven by their own tastes (e.g. a jazz lover -> jazz club, a film lover -> cinema). Combine friends into one stop when tastes overlap. Only real, specific named works/people go in interests; generic words (genres, cuisines, "films", "museums", "jazz") go in genres, never in interests. Max 4 interests per friend. Keep names as written.`;
+Rules: 3-5 stops (cover as many different tastes as possible), each ONE venue type (never combine two types in one stop). EVERY friend must appear in the "for" list of at least one stop, driven by their own tastes (e.g. a jazz lover -> jazz club, a film lover -> cinema). Combine friends into one stop when tastes overlap. Only real, specific named works/people go in interests; generic words (genres, cuisines, "films", "museums", "jazz") go in genres, never in interests. Max 4 interests per friend. Keep names as written.`;
 
 const WRITER = `You are the final step of a group-outing agent. You receive candidate venues found by the Qloo Taste AI API for each stop. Each stop lists "for": the friends whose tastes drive it. per_friend scores are 0-100 (relative match within that friend's Qloo results; null = not ranked). Pick ONE venue per stop that fits the stop's category and its "for" friends, and output JSON only:
 {"title":"short catchy plan title","summary":"2 sentences","stops":[{"label":"...","venue_id":"...","why":"1 sentence","per_friend":[{"name":"friend","reason":"short reason linking the venue to THIS friend's tastes, or honest note if it's mainly for someone else"}]}],"tip":"one practical tip"}
@@ -42,7 +42,7 @@ function naivePlan(friends, occasion) {
   };
 }
 
-// Make sure every friend drives at least one stop (max 3 stops).
+// Make sure every friend drives at least one stop, then add more of their tastes (max 5 stops).
 function ensureCoverage(plan, friends) {
   const stops = (plan.stops || []).filter((s) => s?.tag_query).map((s) => ({ label: String(s.label || s.tag_query), tag_query: String(s.tag_query), for: (Array.isArray(s.for) ? s.for : []).filter((n) => plan.friends.some((f) => f.name === n)) }));
   for (const f of plan.friends) {
@@ -63,8 +63,20 @@ function ensureCoverage(plan, friends) {
     const idx = stops.findIndex((x) => x.for.every((n) => stops.some((y) => y !== x && y.for.includes(n))));
     if (idx >= 0) stops[idx] = { label, tag_query: tq, for: [f.name] }; else stops[0].for.push(f.name);
   }
+  // second pass: cover more of each friend's tastes (up to 5 stops)
+  for (let round = 0; round < 3 && stops.length < 5; round++) for (const f of plan.friends) {
+    if (stops.length >= 5) break;
+    const said = friends.find((x) => x.name === f.name)?.tastes || "";
+    const genres = [...new Set([...(f.genres || []), ...(f.food || []), ...said.split(/[,;\n]/).map((x) => x.trim()).filter(isGeneric)].map((g) => String(g).toLowerCase()))];
+    const g = genres.find((x) => { const tq = STOP_FOR(x)[1]; return !stops.some((st) => st.tag_query.toLowerCase() === tq || st.tag_query.toLowerCase().includes(x.replace(/s$/, ""))); });
+    if (!g) continue;
+    const [label, tq] = STOP_FOR(g);
+    stops.push({ label, tag_query: tq, for: [f.name] });
+  }
+  const ORDER = (t) => (/museum|galler|art|culture/.test(t) ? 0 : /coffee|matcha|tea|brunch/.test(t) ? 1 : /cinema|film|movie/.test(t) ? 3 : /jazz|music|wine|beer|cocktail|bar/.test(t) ? 4 : 2);
+  stops.sort((a, b) => ORDER(a.tag_query.toLowerCase()) - ORDER(b.tag_query.toLowerCase()));
   for (const s of stops) if (/&| and /i.test(s.label)) s.label = STOP_FOR(s.tag_query)[0];
-  plan.stops = stops.filter((s) => s.for.length).slice(0, 3);
+  plan.stops = stops.filter((s) => s.for.length).slice(0, 5);
   if (!plan.stops.length) plan.stops = [{ label: "Dinner", tag_query: "restaurant", for: plan.friends.map((f) => f.name) }];
 }
 
@@ -140,7 +152,15 @@ export async function POST(req) {
             const quality = g.rating ? Math.min(1, g.rating / 5) : 0.6;
             return { ...g, per_friend: pf, score: (g.affinity || 0) + (drv.length ? drv.reduce((a, b) => a + b, 0) / drv.length / 100 : 0) * 0.5 + 0.2 * quality };
           }).sort((a, b) => b.score - a.score)
-            .filter((c, i, arr) => arr.findIndex((x) => x.name === c.name) === i).slice(0, 6);
+            .filter((c, i, arr) => arr.findIndex((x) => x.name === c.name) === i);
+          // category fit: a "sushi" stop must be a sushi place, not a jazz bar that happens to serve it
+          const kw = tq.split(/\s+/)[0].replace(/s$/, "");
+          const CONFLICT = /jazz|live music|music venue|nightclub|cocktail|concert|theat|museum|cinema|hotel/i;
+          const fit = (c) => { const n = c.name.toLowerCase(), tg = c.tags.join(" ").toLowerCase();
+            if (n.includes(kw)) return 2; if (!tg.includes(kw)) return 0; return c.tags.some((t) => CONFLICT.test(t) && !CONFLICT.test(tq)) ? 0 : 1; };
+          const fitting = cands.filter((c) => fit(c) > 0);
+          const finalC = (fitting.length >= 2 ? fitting : cands).sort((a, b) => b.score + 0.15 * fit(b) - (a.score + 0.15 * fit(a))).slice(0, 6);
+          cands.length = 0; cands.push(...finalC);
           stops.push({ ...s, tag, candidates: cands });
         }
         for (const s of stops) {
