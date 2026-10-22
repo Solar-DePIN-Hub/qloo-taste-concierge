@@ -100,7 +100,7 @@ export default function Home() {
                 <p className="why">{s.why}</p>
                 <div className="meter"><span style={{ width: `${Math.round((s.venue.affinity || 0) * 100)}%` }} /><em>Qloo group affinity {Math.round((s.venue.affinity || 0) * 100)}%</em></div>
                 <ul className="pf">{s.per_friend.filter((p) => p.reason || p.driver).map((p, j) => <li key={j} className={p.driver ? "drv" : ""}><div className="av">{p.name.slice(0, 1).toUpperCase()}</div><div><b>{p.name}</b>{p.driver && <span className="aff for">picked for {p.name}</span>}{p.match > 0 && <span className="aff">{p.match}% match</span>}<div className="rs">{p.reason}</div></div></li>)}</ul>
-                <div className="chips">{s.venue.tags.filter((t) => t && t.length > 2 && !/^place$/i.test(t)).slice(0, 5).map((t) => <span key={t}>{t}</span>)}</div>
+                <div className="chips">{s.venue.tags.filter((t) => t && t.length > 2 && !/^place$|restroom|parking|wheelchair|wi-?fi|payment|credit|toilet|good for kids|accessible|reservations|delivery|takeout|catering/i.test(t)).slice(0, 5).map((t) => <span key={t}>{t}</span>)}</div>
                 <div className="links">
                   <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.venue.name + " " + (s.venue.address || result.city))}`} target="_blank" rel="noreferrer">Open in Maps ↗</a>
                   {s.venue.website && <a href={s.venue.website} target="_blank" rel="noreferrer">Website ↗</a>}
