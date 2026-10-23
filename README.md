@@ -16,6 +16,7 @@ Every step is streamed to the UI, so you can see what the agent is doing.
 4. **Find places (Qloo `/v2/insights`).** `filter.type=urn:entity:place`, `filter.location.query=<city>`, `filter.tags=<tag>`, `signal.interests.entities=<everyone's IDs>`. Tags that return nothing are skipped automatically.
 5. **Check every friend (Qloo `/v2/insights` again).** One call per friend with only their entities. That gives a per-friend affinity for each venue, so we can prefer places that fit everybody, not just the loudest taste.
    Each friend's line on a venue shows where Qloo ranked it for that friend alone, for example "#3 of 50 for Anna", or "not in Olya's top 50". The rank comes straight from Qloo's ordering, not from the LLM.
+5b. **Taste profiles (Qloo `/v2/insights`, `filter.type=urn:tag`, `filter.tag.types=urn:tag:genre:place`).** For each friend, Qloo's taste graph says which kinds of places people with those music/film/book tastes over-index on (e.g. Radiohead + Blade Runner 2049 → live music bar, art gallery, museum). The writer must use these for cross-domain reasons, and a venue whose tags match a friend's profile gets a "Qloo profile: …" badge.
 6. **Write the plan (LLM).** Picks one venue per stop and writes a short reason for each friend, using only venues returned by Qloo.
 
 Qloo is the core: without it there are no venues and no taste scores. The LLM only plans and writes text.
@@ -43,9 +44,9 @@ npm run dev                  # http://localhost:3000
 | --- | --- | --- |
 | `QLOO_API_KEY` | yes | Qloo hackathon key |
 | `QLOO_BASE_URL` | no | defaults to `https://hackathon.api.qloo.com` |
-| `FEATHERLESS_API_KEY` | one of the two LLMs | primary LLM |
+| `FEATHERLESS_API_KEY` | one of the two LLMs | fallback LLM |
 | `FEATHERLESS_MODEL` | no | default `Qwen/Qwen2.5-14B-Instruct` |
-| `GEMINI_API_KEY` | one of the two LLMs | fallback LLM |
+| `GEMINI_API_KEY` | one of the two LLMs | primary LLM |
 | `GEMINI_MODEL` | no | default `gemini-flash-lite-latest` |
 | `LLM_ORDER` | no | default `gemini,featherless` |
 

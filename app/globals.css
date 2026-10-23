@@ -51,3 +51,7 @@ h2{margin:0 0 10px;font-size:20px}
 .pf li.drv .av{background:#ffd27a}.rs{color:#d4cde6;font-size:14px;margin-top:2px}
 .links a{color:#c4b8ff;text-decoration:none;font-weight:600}.links a:hover{text-decoration:underline}
 @media (max-width:560px){main{padding:14px 12px 40px}.timeline .stop{grid-template-columns:30px 1fr;gap:10px}.rail .num{width:28px;height:28px;font-size:14px}.scard{padding:16px 14px 12px}.scard h3{font-size:21px}.hero{padding-top:12px}}
+
+.profiles{margin:14px 0}.profiles .ptitle{font-weight:700;margin-bottom:6px}.profiles .ptitle span{font-weight:400;opacity:.7;font-size:.9em}
+.prow{margin:4px 0;font-size:.92rem}.prow .src{opacity:.65;font-size:.85em}.pchip{display:inline-block;margin:2px 4px;padding:2px 9px;border-radius:99px;background:rgba(124,92,255,.14);font-size:.82rem}
+.aff.ph{background:rgba(124,92,255,.16)}

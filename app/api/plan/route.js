@@ -1,4 +1,4 @@
-import { searchEntity, findPlaceTags, placeInsights, ENTITY_TYPES } from "../../../lib/qloo";
+import { searchEntity, findPlaceTags, placeInsights, placeTasteProfile, ENTITY_TYPES } from "../../../lib/qloo";
 import { askJson } from "../../../lib/llm";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ Rules: 3-5 stops (cover as many different tastes as possible), each ONE venue ty
 
 const WRITER = `You are the final step of a group-outing agent. You receive candidate venues found by the Qloo Taste AI API for each stop. Each stop lists "for": the friends whose tastes drive it. per_friend scores are 0-100 (relative match within that friend's Qloo results; null = not ranked). Pick ONE venue per stop that fits the stop's category and its "for" friends, and output JSON only:
 {"title":"short catchy plan title","summary":"2 sentences","stops":[{"label":"...","venue_id":"...","why":"1 sentence","per_friend":[{"name":"friend","reason":"short reason linking the venue to THIS friend's tastes, or honest note if it's mainly for someone else"}]}],"tip":"one practical tip"}
-Only use venue_ids from the candidates. Ground reasons in what each friend said ("said") and the venue tags; do not invent facts like prices or opening hours.`;
+Only use venue_ids from the candidates. Ground reasons in what each friend said ("said"), their stated tastes, and the venue tags. Each candidate may list profile_hits: friends whose Qloo taste profile (kinds of places people with their tastes over-index on) matches a tag of that venue. Only claim that a friend's tastes "over-index" on something, or cite Qloo for a friend, when that friend is in the chosen venue's profile_hits, and then name that exact tag. Otherwise, for a friend who is not in "for", you may say what their Qloo taste profile leans towards, naming only tags from their qloo_place_affinities list (e.g. "Qloo says your Taylor Swift / Austen tastes lean towards wineries and tea houses, so the wine bar is the closest fit"), or tie the reason to a concrete venue tag and something the friend actually said. Never write generic filler like "a relaxed atmosphere to enjoy with the group". Do not invent facts like prices or opening hours.`;
 
 // Generic words are matched to Qloo place tags, never to entities (avoids "jazz" -> album "Jazz").
 const GENERIC = new Set("jazz rock pop blues classical techno house hiphop hip-hop rap metal indie punk folk soul funk disco electronic music concerts gigs live music films film movies movie cinema museums museum art galleries gallery theatre theater books reading anime games gaming sushi ramen pizza burgers tacos coffee tea matcha wine beer cocktails food vegan vegetarian brunch dessert bakery craft beer natural wine specialty coffee italian japanese thai indian mexican french korean chinese georgian ukrainian seafood steak dancing clubbing karaoke comedy history architecture parks nature hiking".split(" "));
@@ -118,6 +118,10 @@ export async function POST(req) {
         for (const f of resolved) {
           step("tool", `Qloo search · ${f.name}`, [f.entities.length ? `Matched: ${f.entities.map((e) => `${e.name} (${e.type.replace("urn:entity:", "").replace("_", " ")})`).join(", ")}` : "", f.genres.length ? `Used as venue types: ${f.genres.join(", ")}` : ""].filter(Boolean).join(" · ") || "No strong matches");
         }
+        // Qloo cross-domain taste profile per friend (music/film/book tastes -> kinds of places they over-index on)
+        await Promise.all(resolved.map(async (f) => { f.profile = f.entities.length ? await placeTasteProfile(f.entities.map((e) => e.id)).catch(() => []) : []; }));
+        const withProfile = resolved.filter((f) => f.profile.length);
+        if (withProfile.length) step("tool", "Qloo taste profiles", withProfile.map((f) => `${f.name}: ${f.profile.map((t) => t.name).join(", ")}`).join(" · "));
         const people = resolved;
         const allIds = [...new Set(people.flatMap((f) => f.entities.map((e) => e.id)))];
 
@@ -173,9 +177,9 @@ export async function POST(req) {
         step("think", "Choosing venues everyone will like", "Comparing group affinity with each friend's own affinity");
         const brief = {
           city, occasion,
-          friends: people.map((p) => ({ name: p.name, said: friends.find((f) => f.name === p.name)?.tastes || "", tastes: p.entities.map((e) => `${e.name}: ${e.tags.slice(0, 3).join("/")}`), genres: p.genres })),
+          friends: people.map((p) => ({ name: p.name, said: friends.find((f) => f.name === p.name)?.tastes || "", tastes: p.entities.map((e) => `${e.name}: ${e.tags.slice(0, 3).join("/")}`), qloo_place_affinities: (p.profile || []).map((t) => t.name), genres: p.genres })),
           stops: stops.filter((s) => s.candidates.length).map((s) => ({ label: s.label, category: s.tag.name, for: s.for,
-            candidates: s.candidates.map((c) => ({ venue_id: c.id, name: c.name, group_affinity: +(c.affinity || 0).toFixed(3), per_friend: c.per_friend, tags: c.tags })) })),
+            candidates: s.candidates.map((c) => ({ venue_id: c.id, name: c.name, group_affinity: +(c.affinity || 0).toFixed(3), per_friend: c.per_friend, tags: c.tags, profile_hits: people.flatMap((p) => { const n = (p.profile || []).map((t) => t.name).find((x) => c.tags.some((vt) => vt.toLowerCase() === x.toLowerCase())); return n ? [`${p.name}: ${n}`] : []; }) })) })),
         };
         let out, writer;
         // Gemini first here: the writer prompt is long, and Featherless often needs its full timeout on it.
@@ -192,14 +196,14 @@ export async function POST(req) {
           return {
             label: s.label, venue, why: o?.why || `Top match for ${s.label.toLowerCase()} in ${city}.`,
             for: s.for, category: s.tag.name,
-            per_friend: people.map((p) => ({ name: p.name, driver: s.for.includes(p.name), match: venue.per_friend?.[p.name] ?? null, rank: venue.per_friend_rank?.[p.name]?.rank ?? null, of: venue.per_friend_rank?.[p.name]?.of ?? 0,
+            per_friend: people.map((p) => ({ name: p.name, driver: s.for.includes(p.name), profile_hit: (p.profile || []).map((t) => t.name).find((n) => venue.tags.some((vt) => vt.toLowerCase() === n.toLowerCase())) || null, match: venue.per_friend?.[p.name] ?? null, rank: venue.per_friend_rank?.[p.name]?.rank ?? null, of: venue.per_friend_rank?.[p.name]?.of ?? 0,
               reason: o?.per_friend?.find((x) => x?.name === p.name)?.reason || (s.for.includes(p.name) ? `Picked for ${p.name}'s taste: ${friends.find((f) => f.name === p.name)?.tastes}` : "") })),
-            alternatives: s.candidates.filter((c) => c.id !== venue.id && !used.has(c.id)).slice(0, 2),
+            alternatives: s.candidates.filter((c) => c.id !== venue.id && !used.has(c.id)).filter((c, k, arr) => { const b = (x) => x.name.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "").split(/\s+/).slice(0, 2).join(" "); return b(c) !== b(venue) && arr.findIndex((y) => b(y) === b(c)) === k; }).slice(0, 2),
           };
         });
         step("think", `Plan written (${writer})`, `${finalStops.length} stops`);
         send({ type: "result", city, title: out?.title || `Taste plan for ${city}`, summary: out?.summary || "", tip: out?.tip || "",
-          friends: people.map((p) => ({ name: p.name, entities: p.entities, genres: p.genres })), stops: finalStops });
+          friends: people.map((p) => ({ name: p.name, entities: p.entities, genres: p.genres, profile: p.profile || [] })), stops: finalStops });
       } catch (e) {
         send({ type: "error", message: String(e.message || e) });
       }
