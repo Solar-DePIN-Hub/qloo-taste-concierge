@@ -24,7 +24,7 @@ Qloo is the core: without it there are no venues and no taste scores. The LLM on
 
 - Next.js 14 (App Router), one API route (`app/api/plan/route.js`) that streams NDJSON steps
 - Qloo Insights API (hackathon base URL), called server-side only; the key never reaches the browser
-- LLM: Google Gemini (flash-lite) first and Featherless (Qwen2.5-14B-Instruct) as fallback (`LLM_ORDER`), then a plain parser/template if both fail. Gemini first cut a London plan from about 22 s to about 19 s or less in our runs on 23 October
+- LLM: Google Gemini (flash-lite) first and Featherless (Qwen2.5-14B-Instruct) as fallback (`LLM_ORDER`), then a plain parser/template if both fail. In our runs on 23 October this cut a three-friend London plan from about 22 s to about 8 s
 - Deployed on Vercel
 
 No Qloo response data is stored or committed. Everything is fetched live per request.
