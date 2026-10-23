@@ -15,6 +15,7 @@ Every step is streamed to the UI, so you can see what the agent is doing.
 3. **Find venue types (Qloo `/v2/tags`).** Each stop ("ramen", "wine bar", "museum") is mapped to place tags (`filter.parents.types=urn:entity:place`).
 4. **Find places (Qloo `/v2/insights`).** `filter.type=urn:entity:place`, `filter.location.query=<city>`, `filter.tags=<tag>`, `signal.interests.entities=<everyone's IDs>`. Tags that return nothing are skipped automatically.
 5. **Check every friend (Qloo `/v2/insights` again).** One call per friend with only their entities. That gives a per-friend affinity for each venue, so we can prefer places that fit everybody, not just the loudest taste.
+   Each friend's line on a venue shows where Qloo ranked it for that friend alone, for example "#3 of 50 for Anna", or "not in Olya's top 50". The rank comes straight from Qloo's ordering, not from the LLM.
 6. **Write the plan (LLM).** Picks one venue per stop and writes a short reason for each friend, using only venues returned by Qloo.
 
 Qloo is the core: without it there are no venues and no taste scores. The LLM only plans and writes text.
@@ -23,7 +24,7 @@ Qloo is the core: without it there are no venues and no taste scores. The LLM on
 
 - Next.js 14 (App Router), one API route (`app/api/plan/route.js`) that streams NDJSON steps
 - Qloo Insights API (hackathon base URL), called server-side only; the key never reaches the browser
-- LLM: Featherless (Qwen2.5-14B-Instruct) as primary, Google Gemini as fallback, and a plain template if both fail
+- LLM: Featherless (Qwen2.5-14B-Instruct) first for the planning step and Google Gemini first for the longer writing step, each falling back to the other, and a plain template if both fail
 - Deployed on Vercel
 
 No Qloo response data is stored or committed. Everything is fetched live per request.

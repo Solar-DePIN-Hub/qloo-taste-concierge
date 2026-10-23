@@ -29,6 +29,7 @@ h2{margin:0 0 10px;font-size:20px}
 .tip{color:#ffe7b0}footer{text-align:center;color:#aaa3bf;font-size:13px;margin-top:30px}
 .aff{font-size:12px;margin:0 6px;padding:2px 7px;border-radius:99px;background:#9d8bff33;color:#d6ceff}
 .aff.for{background:#ffd27a2e;color:#ffe3a3}
+.aff.miss{background:#ffffff14;color:#b9b4cc}
 .log{padding:14px 18px}.logtoggle{background:none;border:0;color:#d4cde6;font-size:15px;padding:0}
 .log .steps{margin-top:12px}.progress .bar{height:6px;background:#0c0a16;border-radius:99px;overflow:hidden}.progress .bar span{display:block;height:100%;background:linear-gradient(90deg,#ffd27a,#ff7ab6);transition:width .4s}
 .progress .now{margin:10px 0 4px;color:#e4def2;font-size:15px}

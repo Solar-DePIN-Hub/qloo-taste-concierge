@@ -143,14 +143,15 @@ export async function POST(req) {
             const list = await placeInsights({ city, entityIds: p.entities.map((e) => e.id), tagId: tag.id, take: 50 }).catch(() => []);
             const max = Math.max(1e-9, ...list.map((x) => x.affinity || 0));
             // relative match: venue's affinity vs. this friend's top venue in the category
-            return [p.name, new Map(list.map((x) => [x.id, Math.round(100 * (x.affinity || 0) / max)]))];
+            return [p.name, new Map(list.map((x, i) => [x.id, { match: Math.round(100 * (x.affinity || 0) / max), rank: i + 1, of: list.length }]))];
           }));
           const pm = new Map(per);
           const cands = group.map((g) => {
-            const pf = Object.fromEntries(people.map((p) => [p.name, pm.get(p.name)?.get(g.id) ?? null]));
+            const pf = Object.fromEntries(people.map((p) => [p.name, pm.get(p.name)?.get(g.id)?.match ?? null]));
+            const pr = Object.fromEntries(people.filter((p) => pm.has(p.name)).map((p) => { const r = pm.get(p.name)?.get(g.id); return [p.name, r ? { rank: r.rank, of: r.of } : { rank: null, of: pm.get(p.name)?.size || 0 }]; }));
             const drv = drivers.map((p) => pf[p.name]).filter((v) => v != null);
             const quality = g.rating ? Math.min(1, g.rating / 5) : 0.6;
-            return { ...g, per_friend: pf, score: (g.affinity || 0) + (drv.length ? drv.reduce((a, b) => a + b, 0) / drv.length / 100 : 0) * 0.5 + 0.2 * quality };
+            return { ...g, per_friend: pf, per_friend_rank: pr, score: (g.affinity || 0) + (drv.length ? drv.reduce((a, b) => a + b, 0) / drv.length / 100 : 0) * 0.5 + 0.2 * quality };
           }).sort((a, b) => b.score - a.score)
             .filter((c, i, arr) => arr.findIndex((x) => x.name === c.name) === i);
           // category fit: a "sushi" stop must be a sushi place, not a jazz bar that happens to serve it
@@ -177,7 +178,8 @@ export async function POST(req) {
             candidates: s.candidates.map((c) => ({ venue_id: c.id, name: c.name, group_affinity: +(c.affinity || 0).toFixed(3), per_friend: c.per_friend, tags: c.tags })) })),
         };
         let out, writer;
-        try { const r = await askJson(WRITER, JSON.stringify(brief)); out = r.data; writer = r.provider; }
+        // Gemini first here: the writer prompt is long, and Featherless often needs its full timeout on it.
+        try { const r = await askJson(WRITER, JSON.stringify(brief), ["gemini", "featherless"]); out = r.data; writer = r.provider; }
         catch { out = null; writer = "template"; }
         const byId = new Map(stops.flatMap((s) => s.candidates.map((c) => [c.id, c])));
         const used = new Set();
@@ -190,7 +192,7 @@ export async function POST(req) {
           return {
             label: s.label, venue, why: o?.why || `Top match for ${s.label.toLowerCase()} in ${city}.`,
             for: s.for, category: s.tag.name,
-            per_friend: people.map((p) => ({ name: p.name, driver: s.for.includes(p.name), match: venue.per_friend?.[p.name] ?? null,
+            per_friend: people.map((p) => ({ name: p.name, driver: s.for.includes(p.name), match: venue.per_friend?.[p.name] ?? null, rank: venue.per_friend_rank?.[p.name]?.rank ?? null, of: venue.per_friend_rank?.[p.name]?.of ?? 0,
               reason: o?.per_friend?.find((x) => x?.name === p.name)?.reason || (s.for.includes(p.name) ? `Picked for ${p.name}'s taste: ${friends.find((f) => f.name === p.name)?.tastes}` : "") })),
             alternatives: s.candidates.filter((c) => c.id !== venue.id && !used.has(c.id)).slice(0, 2),
           };
